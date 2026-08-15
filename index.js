@@ -126,6 +126,21 @@ class Extractor {
 
     if (symlink) {
       const link = await getStream(readStream)
+
+      // The link target comes straight out of the archive, so it may point anywhere.
+      // Resolve it against the canonical directory the symlink is created in (both
+      // sides are canonical: this directory was just created and this.opts.dir was
+      // realpath'd) and refuse anything landing outside of the target directory.
+      const canonicalDestDir = await fs.realpath(path.dirname(dest))
+      const linkTarget = path.resolve(canonicalDestDir, link)
+      const relativeLinkTarget = path.relative(this.opts.dir, linkTarget)
+
+      // On Windows path.relative() returns an absolute path when the target sits on
+      // another drive, which is out of bound too.
+      if (relativeLinkTarget.split(path.sep).includes('..') || path.isAbsolute(relativeLinkTarget)) {
+        throw new Error(`Out of bound path "${linkTarget}" found while processing file ${entry.fileName}`)
+      }
+
       debug('creating symlink', link, dest)
       await fs.symlink(link, dest)
     } else {
